@@ -12,14 +12,31 @@
       const search = window.location.search;
       const params = new URLSearchParams(search);
 
-      // Cek parameter ?to= atau ?url=
-      const directTarget = params.get('to') || params.get('url');
-      if (directTarget) {
+      // Cek parameter ?go=, ?to=, atau ?url=
+      const directParam = params.get('go') || params.get('to') || params.get('url');
+      if (directParam) {
         try {
-          const decoded = decodeURIComponent(directTarget);
-          if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-            window.location.replace(decoded);
+          let target = decodeURIComponent(directParam);
+          if (!target.startsWith('http://') && !target.startsWith('https://')) {
+            target = decodeURIComponent(atob(target));
+          }
+          if (target.startsWith('http://') || target.startsWith('https://')) {
+            window.location.replace(target);
             return;
+          }
+        } catch (e) {}
+      }
+
+      // Cek hash yang mengandung query go (misal: #/custom-alias?go=<base64>)
+      if (hash.includes('?go=') || hash.includes('&go=')) {
+        try {
+          const match = hash.match(/[?&]go=([^&]+)/);
+          if (match && match[1]) {
+            const target = decodeURIComponent(atob(decodeURIComponent(match[1])));
+            if (target.startsWith('http://') || target.startsWith('https://')) {
+              window.location.replace(target);
+              return;
+            }
           }
         } catch (e) {}
       }
@@ -28,17 +45,18 @@
       if (hash.startsWith('#go:')) {
         try {
           const raw = hash.slice(4);
-          const decoded = atob(raw);
-          if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-            window.location.replace(decoded);
+          const target = decodeURIComponent(atob(raw));
+          if (target.startsWith('http://') || target.startsWith('https://')) {
+            window.location.replace(target);
             return;
           }
         } catch (e) {}
       }
 
-      // Cek slug lokal dari hash #/slug
+      // Cek slug lokal dari hash #/slug jika ada di storage pembuat
       if (hash.startsWith('#/')) {
-        const slug = hash.slice(2).trim();
+        const cleanHash = hash.split('?')[0];
+        const slug = cleanHash.slice(2).trim();
         if (slug) {
           try {
             const rawData = localStorage.getItem('pintasan_links_v1');
@@ -120,9 +138,9 @@
             <div class="field-block flex-1">
               <label for="engine-select" class="field-label">Metode Ringkas</label>
               <select id="engine-select" class="select-input">
-                <option value="direct">GitHub Pages Langsung (Hash Redirect)</option>
-                <option value="tinyurl">Publik: TinyURL API</option>
-                <option value="isgd">Publik: is.gd API</option>
+                <option value="dagd">Publik Global: da.gd (Mendukung Alias Kustom)</option>
+                <option value="tinyurl">Publik Global: TinyURL</option>
+                <option value="direct">GitHub Pages Mandiri (#go:base64)</option>
               </select>
             </div>
           </div>

@@ -356,21 +356,25 @@
   const btnCopyResult = document.getElementById('btn-copy-result');
   const btnVisitResult = document.getElementById('btn-visit-result');
 
-  async function shortenViaApi(originalUrl, engine) {
-    if (engine === 'tinyurl') {
+  async function shortenViaApi(originalUrl, engine, customSlug) {
+    if (engine === 'dagd') {
       try {
-        const resp = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(originalUrl)}`);
+        let endpoint = `https://da.gd/s?url=${encodeURIComponent(originalUrl)}`;
+        if (customSlug) {
+          endpoint += `&shorturl=${encodeURIComponent(customSlug)}`;
+        }
+        const resp = await fetch(endpoint);
         if (resp.ok) {
           const txt = await resp.text();
           if (txt && txt.startsWith('http')) return txt.trim();
         }
       } catch (e) {}
-    } else if (engine === 'isgd') {
+    } else if (engine === 'tinyurl') {
       try {
-        const resp = await fetch(`https://is.gd/create.php?format=json&url=${encodeURIComponent(originalUrl)}`);
+        const resp = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(originalUrl)}`);
         if (resp.ok) {
-          const data = await resp.json();
-          if (data && data.shorturl) return data.shorturl;
+          const txt = await resp.text();
+          if (txt && txt.startsWith('http')) return txt.trim();
         }
       } catch (e) {}
     }
@@ -379,14 +383,14 @@
 
   function generateDirectHashUrl(originalUrl, customSlug) {
     const base = window.location.origin + window.location.pathname;
+    // Encode Base64 agar tautan publik mandiri tanpa ketergantungan storage orang lain
+    const encoded = btoa(encodeURIComponent(originalUrl));
     if (customSlug) {
       return {
-        url: `${base}#/${encodeURIComponent(customSlug)}`,
+        url: `${base}#/${encodeURIComponent(customSlug)}?go=${encoded}`,
         slug: customSlug
       };
     }
-    // Encode Base64 agar tautan mandiri tanpa ketergantungan storage
-    const encoded = btoa(encodeURIComponent(originalUrl));
     return {
       url: `${base}#go:${encoded}`,
       slug: null
@@ -402,7 +406,7 @@
 
     const normalized = normalizeUrl(rawUrl);
     const customSlug = slugInput ? slugInput.value.trim() : '';
-    const selectedEngine = engineSelect ? engineSelect.value : 'direct';
+    const selectedEngine = engineSelect ? engineSelect.value : 'dagd';
 
     btnSubmit.disabled = true;
     const originalText = btnSubmit.querySelector('.btn-text').textContent;
@@ -410,23 +414,27 @@
 
     let finalShortUrl = '';
     let finalSlug = customSlug || null;
-    let engineLabel = 'GitHub Pages';
+    let engineLabel = 'da.gd';
 
-    if (selectedEngine === 'direct' || customSlug) {
+    if (selectedEngine === 'direct') {
       const generated = generateDirectHashUrl(normalized, customSlug);
       finalShortUrl = generated.url;
       finalSlug = generated.slug;
       engineLabel = 'GitHub Pages';
     } else {
-      // Coba panggil API publik
-      const apiResult = await shortenViaApi(normalized, selectedEngine);
+      // Coba panggil API publik (da.gd atau tinyurl)
+      const apiResult = await shortenViaApi(normalized, selectedEngine, customSlug);
       if (apiResult) {
         finalShortUrl = apiResult;
-        engineLabel = selectedEngine === 'tinyurl' ? 'TinyURL' : 'is.gd';
+        engineLabel = selectedEngine === 'dagd' ? 'da.gd' : 'TinyURL';
       } else {
-        // Fallback langsung ke GitHub Hash bila jaringan API gagal
-        const fallback = generateDirectHashUrl(normalized, null);
+        // Fallback langsung ke GitHub Hash bila jaringan API gagal atau alias sudah terpakai
+        const fallback = generateDirectHashUrl(normalized, customSlug);
         finalShortUrl = fallback.url;
+        engineLabel = 'GitHub Pages (Fallback)';
+        showToast('API publik gagal atau alias terpakai. Menggunakan direct redirect.');
+      }
+    }
         engineLabel = 'GitHub Pages (Fallback)';
         showToast('API publik sibuk. Menggunakan direct redirect.');
       }
