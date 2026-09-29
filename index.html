@@ -121,7 +121,7 @@
             <div class="field-block flex-1">
               <label for="custom-slug" class="field-label">Kustom Alias (Opsional)</label>
               <div class="input-wrap slug-wrap">
-                <span class="slug-prefix">#/</span>
+                <span class="slug-prefix">/</span>
                 <input
                   id="custom-slug"
                   name="slug"
@@ -138,8 +138,8 @@
             <div class="field-block flex-1">
               <label for="engine-select" class="field-label">Metode Ringkas</label>
               <select id="engine-select" class="select-input">
-                <option value="dagd">Publik Global: da.gd (Mendukung Alias Kustom)</option>
-                <option value="tinyurl">Publik Global: TinyURL</option>
+                <option value="spoo" selected>Publik Universal: spoo.me (Rekomendasi, Kustom Alias)</option>
+                <option value="dagd">Publik Alternatif: da.gd</option>
                 <option value="direct">GitHub Pages Mandiri (#go:base64)</option>
               </select>
             </div>
@@ -180,7 +180,7 @@
 
           <div id="qr-container" class="qr-panel" hidden>
             <div class="qr-canvas-wrap">
-              <canvas id="qr-canvas" width="180" height="180"></canvas>
+              <div id="qr-code-box"></div>
             </div>
             <div class="qr-actions">
               <button id="btn-download-qr" type="button" class="btn-sm">Unduh PNG</button>
@@ -239,6 +239,7 @@
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
+  <script src="qrcode.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

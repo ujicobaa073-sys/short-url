@@ -356,34 +356,63 @@
   const btnCopyResult = document.getElementById('btn-copy-result');
   const btnVisitResult = document.getElementById('btn-visit-result');
 
+  function getBaseUrl() {
+    if (window.location.protocol === 'file:') {
+      return 'https://ujicobaa073-sys.github.io/short-url/';
+    }
+    const cleanPath = window.location.pathname.replace(/index\.html$/i, '');
+    return window.location.origin + cleanPath + (cleanPath.endsWith('/') ? '' : '/');
+  }
+
   async function shortenViaApi(originalUrl, engine, customSlug) {
-    if (engine === 'dagd') {
+    if (engine === 'spoo') {
+      try {
+        const bodyParams = new URLSearchParams();
+        bodyParams.append('url', originalUrl);
+        if (customSlug) {
+          bodyParams.append('alias', customSlug);
+        }
+        const resp = await fetch('https://spoo.me', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'application/json'
+          },
+          body: bodyParams.toString()
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (resp.ok && data.short_url) {
+          return { url: data.short_url, error: null };
+        } else if (data.AliasError) {
+          return { url: null, error: `Alias '${customSlug}' sudah digunakan. Gunakan alias lain.` };
+        } else if (data.error) {
+          return { url: null, error: data.error };
+        }
+      } catch (e) {
+        return { url: null, error: 'Gagal menghubungi spoo.me: ' + e.message };
+      }
+    } else if (engine === 'dagd') {
       try {
         let endpoint = `https://da.gd/s?url=${encodeURIComponent(originalUrl)}`;
         if (customSlug) {
           endpoint += `&shorturl=${encodeURIComponent(customSlug)}`;
         }
         const resp = await fetch(endpoint);
-        if (resp.ok) {
-          const txt = await resp.text();
-          if (txt && txt.startsWith('http')) return txt.trim();
+        const txt = await resp.text();
+        if (resp.ok && txt && txt.startsWith('http')) {
+          return { url: txt.trim(), error: null };
+        } else if (txt && txt.includes('already taken')) {
+          return { url: null, error: `Alias '${customSlug}' sudah digunakan di da.gd.` };
         }
-      } catch (e) {}
-    } else if (engine === 'tinyurl') {
-      try {
-        const resp = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(originalUrl)}`);
-        if (resp.ok) {
-          const txt = await resp.text();
-          if (txt && txt.startsWith('http')) return txt.trim();
-        }
-      } catch (e) {}
+      } catch (e) {
+        return { url: null, error: 'Gagal menghubungi da.gd: ' + e.message };
+      }
     }
-    return null;
+    return { url: null, error: 'Metode tidak dikenali' };
   }
 
   function generateDirectHashUrl(originalUrl, customSlug) {
-    const base = window.location.origin + window.location.pathname;
-    // Encode Base64 agar tautan publik mandiri tanpa ketergantungan storage orang lain
+    const base = getBaseUrl();
     const encoded = btoa(encodeURIComponent(originalUrl));
     if (customSlug) {
       return {
@@ -406,7 +435,7 @@
 
     const normalized = normalizeUrl(rawUrl);
     const customSlug = slugInput ? slugInput.value.trim() : '';
-    const selectedEngine = engineSelect ? engineSelect.value : 'dagd';
+    const selectedEngine = engineSelect ? engineSelect.value : 'spoo';
 
     btnSubmit.disabled = true;
     const originalText = btnSubmit.querySelector('.btn-text').textContent;
@@ -414,7 +443,7 @@
 
     let finalShortUrl = '';
     let finalSlug = customSlug || null;
-    let engineLabel = 'da.gd';
+    let engineLabel = 'spoo.me';
 
     if (selectedEngine === 'direct') {
       const generated = generateDirectHashUrl(normalized, customSlug);
@@ -422,21 +451,15 @@
       finalSlug = generated.slug;
       engineLabel = 'GitHub Pages';
     } else {
-      // Coba panggil API publik (da.gd atau tinyurl)
       const apiResult = await shortenViaApi(normalized, selectedEngine, customSlug);
-      if (apiResult) {
-        finalShortUrl = apiResult;
-        engineLabel = selectedEngine === 'dagd' ? 'da.gd' : 'TinyURL';
+      if (apiResult.url) {
+        finalShortUrl = apiResult.url;
+        engineLabel = selectedEngine === 'spoo' ? 'spoo.me' : 'da.gd';
       } else {
-        // Fallback langsung ke GitHub Hash bila jaringan API gagal atau alias sudah terpakai
-        const fallback = generateDirectHashUrl(normalized, customSlug);
-        finalShortUrl = fallback.url;
-        engineLabel = 'GitHub Pages (Fallback)';
-        showToast('API publik gagal atau alias terpakai. Menggunakan direct redirect.');
-      }
-    }
-        engineLabel = 'GitHub Pages (Fallback)';
-        showToast('API publik sibuk. Menggunakan direct redirect.');
+        btnSubmit.disabled = false;
+        btnSubmit.querySelector('.btn-text').textContent = originalText;
+        showToast(apiResult.error || 'Gagal memproses tautan pendek.');
+        return;
       }
     }
 
@@ -513,15 +536,16 @@
     domainPreview.hidden = true;
     domainPreview.textContent = '';
     if (resultBox) resultBox.hidden = true;
+    if (qrContainer) qrContainer.hidden = true;
     urlInput.focus();
   });
 
   // --- Generator QR Code Murni (Bebas Dependensi) ---
   const btnShowQr = document.getElementById('btn-show-qr');
   const qrContainer = document.getElementById('qr-container');
-  const qrCanvas = document.getElementById('qr-canvas');
   const btnDownloadQr = document.getElementById('btn-download-qr');
   const btnCloseQr = document.getElementById('btn-close-qr');
+  const qrCodeBox = document.getElementById('qr-code-box');
 
   btnShowQr?.addEventListener('click', () => {
     playClick();
@@ -537,50 +561,36 @@
 
   btnDownloadQr?.addEventListener('click', () => {
     playClick('success');
-    if (!qrCanvas) return;
-    const a = document.createElement('a');
-    a.download = 'pintasan-qr.png';
-    a.href = qrCanvas.toDataURL('image/png');
-    a.click();
+    const img = qrCodeBox?.querySelector('img') || qrCodeBox?.querySelector('canvas');
+    if (img) {
+      const a = document.createElement('a');
+      a.download = 'pintasan-qr.png';
+      a.href = img.src || (img.toDataURL ? img.toDataURL('image/png') : '');
+      a.click();
+    }
   });
 
   function displayQrCode(text) {
-    if (!qrContainer || !qrCanvas) return;
+    if (!qrContainer || !qrCodeBox) return;
     qrContainer.hidden = false;
-    drawQrToCanvas(text, qrCanvas);
+    qrCodeBox.innerHTML = '';
+    try {
+      if (typeof QRCode !== 'undefined') {
+        new QRCode(qrCodeBox, {
+          text: text,
+          width: 180,
+          height: 180,
+          colorDark: '#0f172a',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } else {
+        qrCodeBox.textContent = 'Library QR belum siap';
+      }
+    } catch (err) {
+      qrCodeBox.textContent = 'Gagal membuat QR Code';
+    }
     qrContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
-
-  // Implementasi QR Code Generator Minimalis Berbasis Canvas
-  // Menggunakan API browser atau matriks representasi standar
-  function drawQrToCanvas(text, canvas) {
-    const ctx = canvas.getContext('2d');
-    const size = canvas.width;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, size, size);
-
-    // Gunakan Image loader dengan QR service publik terpercaya yang cepat atau generator lokal
-    const qrImg = new Image();
-    qrImg.crossOrigin = 'Anonymous';
-    qrImg.onload = () => {
-      ctx.drawImage(qrImg, 0, 0, size, size);
-    };
-    qrImg.onerror = () => {
-      // Fallback matriks visual sederhana jika offline
-      drawFallbackMatrix(ctx, text, size);
-    };
-    qrImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(text)}&margin=1`;
-  }
-
-  function drawFallbackMatrix(ctx, text, size) {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, size, size);
-    ctx.fillStyle = '#0f172a';
-    ctx.font = '12px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillText('QR Code siap', size / 2, size / 2 - 10);
-    ctx.font = '10px monospace';
-    ctx.fillText('Buka online untuk render', size / 2, size / 2 + 10);
   }
 
   // --- Keyboard Shortcuts Global ---
