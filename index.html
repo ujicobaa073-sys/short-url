@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pintasan &mdash; Penyingkat Tautan</title>
+  <link rel="stylesheet" href="style.css">
+  <script>
+    // Penanganan redirect instan bila tautan dibuka dengan parameter atau hash
+    (function () {
+      const hash = window.location.hash;
+      const search = window.location.search;
+      const params = new URLSearchParams(search);
+
+      // Cek parameter ?to= atau ?url=
+      const directTarget = params.get('to') || params.get('url');
+      if (directTarget) {
+        try {
+          const decoded = decodeURIComponent(directTarget);
+          if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+            window.location.replace(decoded);
+            return;
+          }
+        } catch (e) {}
+      }
+
+      // Cek hash #go:<base64>
+      if (hash.startsWith('#go:')) {
+        try {
+          const raw = hash.slice(4);
+          const decoded = atob(raw);
+          if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
+            window.location.replace(decoded);
+            return;
+          }
+        } catch (e) {}
+      }
+
+      // Cek slug lokal dari hash #/slug
+      if (hash.startsWith('#/')) {
+        const slug = hash.slice(2).trim();
+        if (slug) {
+          try {
+            const rawData = localStorage.getItem('pintasan_links_v1');
+            if (rawData) {
+              const list = JSON.parse(rawData);
+              const found = list.find(item => item.slug && item.slug.toLowerCase() === slug.toLowerCase());
+              if (found && found.originalUrl) {
+                found.clicks = (found.clicks || 0) + 1;
+                localStorage.setItem('pintasan_links_v1', JSON.stringify(list));
+                window.location.replace(found.originalUrl);
+                return;
+              }
+            }
+          } catch (e) {}
+        }
+      }
+    })();
+  </script>
+</head>
+<body>
+  <div class="app-layout">
+    <header class="app-header">
+      <div class="brand">
+        <span class="brand-symbol">/</span>
+        <h1 class="brand-title">Pintasan</h1>
+      </div>
+      <div class="header-actions">
+        <button id="btn-sound" class="btn-tool" type="button" title="Efek Suara Tik (Aktif/Mati)" aria-label="Toggle suara">
+          <span id="sound-indicator" class="tool-label">SUARA: ON</span>
+        </button>
+        <button id="btn-theme" class="btn-tool" type="button" title="Ganti Tema" aria-label="Ganti tema">
+          <span id="theme-indicator" class="tool-label">TEMA</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section class="tool-panel">
+        <form id="shorten-form" class="shorten-form" autocomplete="off">
+          <div class="field-block">
+            <div class="field-header">
+              <label for="url-input" class="field-label">Tautan Asli</label>
+              <span id="domain-preview" class="domain-tag" hidden></span>
+            </div>
+            <div class="input-wrap">
+              <input
+                id="url-input"
+                name="url"
+                type="text"
+                class="text-input"
+                placeholder="https://contoh.com/artikel-panjang-anda"
+                required
+                spellcheck="false"
+              >
+              <button id="btn-paste" class="btn-action-inline" type="button" title="Tempel dari Clipboard">
+                TEMPEL
+              </button>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <div class="field-block flex-1">
+              <label for="custom-slug" class="field-label">Kustom Alias (Opsional)</label>
+              <div class="input-wrap slug-wrap">
+                <span class="slug-prefix">#/</span>
+                <input
+                  id="custom-slug"
+                  name="slug"
+                  type="text"
+                  class="text-input slug-input"
+                  placeholder="proyek-rahasia"
+                  pattern="[a-zA-Z0-9_-]+"
+                  maxlength="40"
+                  spellcheck="false"
+                >
+              </div>
+            </div>
+
+            <div class="field-block flex-1">
+              <label for="engine-select" class="field-label">Metode Ringkas</label>
+              <select id="engine-select" class="select-input">
+                <option value="direct">GitHub Pages Langsung (Hash Redirect)</option>
+                <option value="tinyurl">Publik: TinyURL API</option>
+                <option value="isgd">Publik: is.gd API</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-actions">
+            <button id="btn-submit" type="submit" class="btn-primary">
+              <span class="btn-text">Perpendek Tautan</span>
+              <kbd class="btn-kbd">↵ Enter</kbd>
+            </button>
+            <button id="btn-clear" type="button" class="btn-secondary" title="Bersihkan input">
+              Reset
+            </button>
+          </div>
+        </form>
+
+        <div id="result-box" class="result-box" hidden>
+          <div class="result-header">
+            <span class="result-title">Tautan Siap Dipakai</span>
+            <span id="result-engine" class="engine-badge">GitHub Pages</span>
+          </div>
+
+          <div class="result-display">
+            <input id="result-url" type="text" class="result-input" readonly>
+            <button id="btn-copy-result" type="button" class="btn-copy">
+              SALIN
+            </button>
+          </div>
+
+          <div class="result-options">
+            <button id="btn-show-qr" type="button" class="btn-opt">
+              Tampilkan QR Code
+            </button>
+            <a id="btn-visit-result" href="#" target="_blank" rel="noopener noreferrer" class="btn-opt">
+              Buka Tautan ↗
+            </a>
+          </div>
+
+          <div id="qr-container" class="qr-panel" hidden>
+            <div class="qr-canvas-wrap">
+              <canvas id="qr-canvas" width="180" height="180"></canvas>
+            </div>
+            <div class="qr-actions">
+              <button id="btn-download-qr" type="button" class="btn-sm">Unduh PNG</button>
+              <button id="btn-close-qr" type="button" class="btn-sm btn-ghost">Tutup</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="history-panel">
+        <div class="panel-bar">
+          <div class="bar-info">
+            <h2 class="panel-heading">Riwayat Lokal</h2>
+            <span id="history-count" class="counter-tag">0 tautan</span>
+          </div>
+          <div class="bar-actions">
+            <button id="btn-export" type="button" class="btn-link" title="Simpan data ke file JSON">Ekspor JSON</button>
+            <label class="btn-link file-label" title="Muat data dari file JSON">
+              Impor JSON
+              <input id="input-import" type="file" accept=".json" hidden>
+            </label>
+            <button id="btn-clear-history" type="button" class="btn-link danger" title="Hapus semua riwayat">Hapus Semua</button>
+          </div>
+        </div>
+
+        <div id="history-empty" class="empty-state">
+          <p class="empty-msg">Belum ada riwayat tautan. Masukkan URL di atas untuk membuat pintasan pertama.</p>
+        </div>
+
+        <div id="history-table-wrap" class="table-wrap" hidden>
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th scope="col" style="width: 32%;">Tautan Pendek</th>
+                <th scope="col" style="width: 40%;">Tujuan Asli</th>
+                <th scope="col" style="width: 12%;">Klik</th>
+                <th scope="col" style="width: 16%;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="history-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      <div class="footer-left">
+        <span class="footer-status">100% Berjalan di Browser &bull; Tanpa Pelacak</span>
+      </div>
+      <div class="footer-shortcuts">
+        <span class="shortcut-item"><kbd>/</kbd> atau <kbd>Ctrl+K</kbd> Fokus Input</span>
+        <span class="shortcut-item"><kbd>Esc</kbd> Bersihkan</span>
+      </div>
+    </footer>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <title>Mengarahkan...</title>
+  <script>
+    (function () {
+      // Dapatkan path yang diminta setelah root repo
+      var pathSegments = window.location.pathname.split('/').filter(Boolean);
+      // Jika di GitHub Pages (format: /repo-name/slug), ambil segment terakhir sebagai slug
+      if (pathSegments.length > 0) {
+        var slug = pathSegments[pathSegments.length - 1];
+        // Redirect ke index dengan hash route
+        var repoBase = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/' + slug));
+        window.location.replace(window.location.origin + repoBase + '/#/' + slug);
+      } else {
+        window.location.replace('/');
+      }
+    })();
+  </script>
+</head>
+<body style="font-family: sans-serif; text-align: center; padding-top: 50px; color: #4b5563;">
+  <p>Mengarahkan tautan singkat...</p>
+</body>
+</html>
